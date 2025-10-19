@@ -1,71 +1,76 @@
-// server.js - Starter Express server for Week 2 assignment
+// server.js
+router.get('/search', asyncWrap(async (req, res) => {
+const q = req.query.q;
+if (!q) throw new ValidationError('Query param `q` is required');
+const term = String(q).toLowerCase();
+const results = products.filter(p => p.name.toLowerCase().includes(term));
+res.json({ total: results.length, data: results });
+}));
 
-// Import required modules
-const express = require('express');
-const bodyParser = require('body-parser');
-const { v4: uuidv4 } = require('uuid');
 
-// Initialize Express app
-const app = express();
-const PORT = process.env.PORT || 3000;
+// GET /api/products/stats
+router.get('/stats', asyncWrap(async (req, res) => {
+const stats = products.reduce((acc, p) => {
+acc.total = (acc.total || 0) + 1;
+acc.byCategory = acc.byCategory || {};
+acc.byCategory[p.category] = (acc.byCategory[p.category] || 0) + 1;
+return acc;
+}, {});
+res.json(stats);
+}));
 
-// Middleware setup
-app.use(bodyParser.json());
 
-// Sample in-memory products database
-let products = [
-  {
-    id: '1',
-    name: 'Laptop',
-    description: 'High-performance laptop with 16GB RAM',
-    price: 1200,
-    category: 'electronics',
-    inStock: true
-  },
-  {
-    id: '2',
-    name: 'Smartphone',
-    description: 'Latest model with 128GB storage',
-    price: 800,
-    category: 'electronics',
-    inStock: true
-  },
-  {
-    id: '3',
-    name: 'Coffee Maker',
-    description: 'Programmable coffee maker with timer',
-    price: 50,
-    category: 'kitchen',
-    inStock: false
-  }
-];
+// GET single product
+router.get('/:id', asyncWrap(async (req, res) => {
+const p = products.find(x => x.id === req.params.id);
+if (!p) throw new NotFoundError('Product not found');
+res.json(p);
+}));
 
-// Root route
-app.get('/', (req, res) => {
-  res.send('Welcome to the Product API! Go to /api/products to see all products.');
+
+// POST create product
+router.post('/', validateProductCreation, asyncWrap(async (req, res) => {
+const { name, description, price, category, inStock } = req.body;
+const newProduct = { id: uuidv4(), name, description, price, category, inStock };
+products.push(newProduct);
+res.status(201).json(newProduct);
+}));
+
+
+// PUT update product
+router.put('/:id', validateProductUpdate, asyncWrap(async (req, res) => {
+const idx = products.findIndex(x => x.id === req.params.id);
+if (idx === -1) throw new NotFoundError('Product not found');
+const updated = Object.assign({}, products[idx], req.body);
+products[idx] = updated;
+res.json(updated);
+}));
+
+
+// DELETE product
+router.delete('/:id', asyncWrap(async (req, res) => {
+const idx = products.findIndex(x => x.id === req.params.id);
+if (idx === -1) throw new NotFoundError('Product not found');
+const [deleted] = products.splice(idx, 1);
+res.json({ deleted });
+}));
+
+
+app.use('/api/products', router);
+
+
+// Global error handler
+app.use((err, req, res, next) => {
+if (!(err instanceof AppError)) {
+console.error('Unexpected error:', err);
+err = new AppError('Internal Server Error', 500);
+}
+res.status(err.status || 500).json({ error: err.message });
 });
 
-// TODO: Implement the following routes:
-// GET /api/products - Get all products
-// GET /api/products/:id - Get a specific product
-// POST /api/products - Create a new product
-// PUT /api/products/:id - Update a product
-// DELETE /api/products/:id - Delete a product
 
-// Example route implementation for GET /api/products
-app.get('/api/products', (req, res) => {
-  res.json(products);
-});
+// Start server
+app.listen(PORT, () => console.log(`Server listening on port ${PORT}`));
 
-// TODO: Implement custom middleware for:
-// - Request logging
-// - Authentication
-// - Error handling
 
-// Start the server
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-});
-
-// Export the app for testing purposes
-module.exports = app; 
+module.exports = app; // handy for tests
